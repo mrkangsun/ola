@@ -16,6 +16,7 @@ import re
 import threading
 import time
 import zlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -30,11 +31,14 @@ CONFIG = {
     "page_icon": "🎂",
     "title": "Birthday Cake",                 # judul di atas animasi
     "sign": "@abin.zip · 2026",               # tanda tangan kecil di pojok animasi
-    "lines": ["SELAMAT", "PAGI", "IMI"],      # 1–3 baris tulisan (huruf besar, maks 12 huruf)
+    "lines": ["HAPPY", "BIRTHDAY", "PRITUY^^"],      # 1–3 baris tulisan (huruf besar, maks 12 huruf)
     "curtain_title": "PERTUNJUKAN SPESIAL",   # tulisan emas di tirai
     "curtain_to": "Kamu",                     # "Untuk: ..." di tirai (kosongkan "" untuk menyembunyikan;
                                               #   bisa ditimpa lewat link ?untuk=Nama)
     "curtain_hint": "ketuk tirai untuk membuka",
+    "music": "lagu.mp3",                      # file mp3 di folder yang sama dengan app.py (atau link https://...mp3)
+                                              #   kosongkan "" kalau tidak mau ada musik
+    "music_volume": 0.7,                      # 0.0 – 1.0
     "fps": 20,                                # frame/detik hasil render (15–24; makin besar makin berat)
 }
 
@@ -565,6 +569,7 @@ PLAYER_HTML = r"""<!doctype html>
   .bar{display:flex;gap:clamp(6px,1.6vw,12px);flex-wrap:wrap;justify-content:center}
   button{font:inherit;font-size:clamp(7px,1.9vw,10px);color:#fff;background:#3a0c18;border:0;cursor:pointer;
     padding:10px 12px;box-shadow:0 0 0 2px var(--gold),3px 3px 0 2px #000;transition:transform .08s steps(2)}
+  button[hidden]{display:none}
   button:hover{background:#561222;transform:translate(-1px,-1px)}
   button:active{transform:translate(2px,2px);box-shadow:0 0 0 2px var(--gold)}
   .hint{font-size:clamp(6px,1.6vw,8px);color:var(--dim);text-align:center;line-height:1.8}
@@ -606,7 +611,7 @@ PLAYER_HTML = r"""<!doctype html>
   </div>
   <div class="bar">
     <button id="bPlay">JEDA</button><button id="bRe">ULANG</button>
-    <button id="bSave">SIMPAN</button><button id="bFs">LAYAR PENUH</button>
+    <button id="bMusic" hidden>MUSIK: ON</button><button id="bSave">SIMPAN</button><button id="bFs">LAYAR PENUH</button>
   </div>
   <div class="hint">ketuk gambar = jeda &middot; spasi = jeda &middot; R = ulang &middot; S = simpan</div>
 </div>
@@ -642,10 +647,25 @@ const GL=Array.from(CFG.chars);
 
 let D=null, paused=false, t=0, last=0, lastFi=-1, curFi=0, opened=false, started=false;
 
+/* ── musik (mp3, loop) ── */
+let audio=null, musicOn=true;
+if(CFG.ready && CFG.music){
+  audio=new Audio(); audio.loop=true; audio.preload='auto'; audio.volume=CFG.volume; audio.src=CFG.music;
+  $('bMusic').hidden=false;
+}
+function playMusic(){ if(audio&&musicOn){ const p=audio.play(); if(p&&p.catch) p.catch(()=>{}); } }
+function toggleMusic(){
+  if(!audio) return;
+  musicOn=!musicOn; $('bMusic').textContent='MUSIK: '+(musicOn?'ON':'OFF');
+  if(musicOn){ if(opened) playMusic(); } else audio.pause();
+}
+document.addEventListener('visibilitychange',()=>{ if(!audio||!opened||!musicOn) return;
+  if(document.hidden) audio.pause(); else playMusic(); });
+
 /* ── tirai ── */
 function openCurtain(){
   if(opened||!CFG.ready) return;
-  opened=true; curtain.classList.add('open');
+  opened=true; curtain.classList.add('open'); playMusic();   // klik pengguna = izin memutar suara
   setTimeout(()=>curtain.classList.add('done'),3100);
 }
 curtain.addEventListener('click',openCurtain);
@@ -739,7 +759,7 @@ function fs(){try{const el=document.documentElement;
 
 stage.addEventListener('click',()=>{if(opened) setPaused(!paused);});
 $('bPlay').onclick=()=>setPaused(!paused);
-$('bRe').onclick=restart; $('bSave').onclick=save; $('bFs').onclick=fs;
+$('bMusic').onclick=toggleMusic; $('bRe').onclick=restart; $('bSave').onclick=save; $('bFs').onclick=fs;
 window.addEventListener('keydown',e=>{
   if(!opened){ if(e.code==='Space'||e.key==='Enter'){e.preventDefault();openCurtain();} return; }
   if(e.code==='Space'){e.preventDefault();setPaused(!paused);}
@@ -792,6 +812,23 @@ def clean(text, default="", limit=24):
     return text[:limit]
 
 
+@st.cache_resource(show_spinner=False, max_entries=2)
+def load_music(path):
+    """mp3 -> data URI (atau link https apa adanya). Kosong kalau tidak ada/terlalu besar."""
+    path = (path or "").strip()
+    if not path:
+        return ""
+    if path.startswith(("http://", "https://")):
+        return path
+    f = Path(__file__).resolve().with_name(path)
+    if not f.is_file():
+        return ""
+    data = f.read_bytes()
+    if len(data) > 12 * 1024 * 1024:
+        return ""
+    return "data:audio/mpeg;base64," + base64.b64encode(data).decode()
+
+
 def build_player_html(payload, to):
     ready = payload is not None
     cfg = {
@@ -803,6 +840,8 @@ def build_player_html(payload, to):
         "title": "🎂 " + CONFIG["title"], "sign": CONFIG["sign"],
         "curtainTitle": CONFIG["curtain_title"],
         "curtainTo": ("Untuk: " + to) if to else "",
+        "music": load_music(CONFIG["music"]) if ready else "",
+        "volume": float(min(1.0, max(0.0, CONFIG["music_volume"]))),
         "hint": CONFIG["curtain_hint"], "waitText": "menyiapkan panggung...",
     }
     data = json.dumps(cfg, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
@@ -839,6 +878,9 @@ def main():
     to = clean(st.query_params.get("untuk"), CONFIG["curtain_to"])
 
     st.markdown(page_css(), unsafe_allow_html=True)
+    m = (CONFIG["music"] or "").strip()
+    if m and not load_music(m):
+        st.warning(f"Musik '{m}' tidak ditemukan / lebih dari 12 MB. Taruh file mp3 di folder yang sama dengan app.py.")
     slot = st.empty()
 
     if not renderer.ready and not renderer.error:       # tirai tampil dulu selagi panggung disiapkan
