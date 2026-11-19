@@ -11,6 +11,7 @@ Link personal  :  https://<app>.streamlit.app/?untuk=Imi
 """
 
 import base64
+import io
 import json
 import re
 import threading
@@ -31,7 +32,7 @@ CONFIG = {
     "page_icon": "🎂",
     "title": "Birthday Cake",                 # judul di atas animasi
     "sign": "@abin.zip · 2026",               # tanda tangan kecil di pojok animasi
-    "lines": ["HAPPY", "BIRTHDAY", "PRITUY^^"],      # 1–3 baris tulisan (huruf besar, maks 12 huruf)
+    "lines": ["HAPPY", "BIRTHDAY", "PRITUY"],      # 1–3 baris tulisan (A–Z, angka, . , ! ? ' & - :  maks 12 huruf)
     "curtain_title": "PERTUNJUKAN SPESIAL",   # tulisan emas di tirai
     "curtain_to": "Kamu",                     # "Untuk: ..." di tirai (kosongkan "" untuk menyembunyikan;
                                               #   bisa ditimpa lewat link ?untuk=Nama)
@@ -228,14 +229,68 @@ def project(p, cols, rows, aspect):
 
 # tulisan besar
 
+# Font tebal mini (DejaVu Sans Bold, hanya A–Z 0–9 dan tanda baca dasar) — ikut di dalam file ini
+# supaya tulisan besar tampil sama di semua server, tanpa perlu font sistem.
+EMBEDDED_FONT = (
+    "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"
+)
 FONTS = ["seguibl.ttf", "C:/Windows/Fonts/seguibl.ttf", "ariblk.ttf", "Arial Black.ttf",
          "/System/Library/Fonts/Supplemental/Arial Black.ttf", "DejaVuSans-Bold.ttf",
          "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
          "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
+ALLOWED = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?'&-:"
 
 
 def heavy_font(px):
-    """Kembalikan (font, tipis?) — kalau tak ada font tebal, pakai font bawaan Pillow + stroke."""
+    """Kembalikan (font, tipis?) — pakai font tebal yang ikut di file; cadangan: font sistem."""
+    try:
+        data = zlib.decompress(base64.b64decode(EMBEDDED_FONT))
+        return ImageFont.truetype(io.BytesIO(data), px), False
+    except Exception:       # noqa: BLE001
+        pass
     for name in FONTS:
         try:
             return ImageFont.truetype(name, px), False
@@ -251,15 +306,16 @@ def word(TEXT, text, cols, rows, scale, cy, hrows):
     # cakupan tiap sel huruf, 0..1
     key = (text, cols, rows, round(scale, 2), cy, hrows)
     if key not in TEXT:
-        ref, _ = heavy_font(100)
-        cap = ref.getbbox("H")[3] - ref.getbbox("H")[1]
-        px_w = 100 * 0.90 * cols * 9 / ref.getlength(text)
+        ref, thin = heavy_font(100)
+        sw = 6 if thin else 0                       # font tipis diberi garis tepi; ukurannya ikut dihitung
+        cap = ref.getbbox("H", stroke_width=sw)[3] - ref.getbbox("H", stroke_width=sw)[1]
+        px_w = 100 * 0.90 * cols * 9 / (ref.getlength(text) + 2 * sw)
         px_h = 100 * hrows * 14 / cap
         px = max(8, int(min(px_w, px_h) * scale))
-        font, thin = heavy_font(px)
+        font, _ = heavy_font(px)
         im = Image.new("L", (cols * 9, rows * 14), 0)
         ImageDraw.Draw(im).text((cols * 4.5, cy * 14), text, font=font, fill=255, anchor="mm",
-                                stroke_width=max(1, px // 10) if thin else 0, stroke_fill=255)
+                                stroke_width=round(px * sw / 100), stroke_fill=255)
         TEXT[key] = np.asarray(im, np.float32).reshape(rows, 14, cols, 9).mean((1, 3)) / 255
     return TEXT[key]
 
@@ -559,7 +615,7 @@ PLAYER_HTML = r"""<!doctype html>
   #g1{opacity:.75} #g2{opacity:.45}
   .hud{position:absolute;left:5.5%;bottom:4%;pointer-events:none;
     font:clamp(7px,1.5vw,14px)/1.9 consolas,menlo,'DejaVu Sans Mono',monospace;color:#6e6878;white-space:pre}
-  .hud{font-size:1.55cqw}
+  .hud{font-size:1.45cqw;line-height:1.7}
   .timer{position:absolute;right:5.5%;top:3%;pointer-events:none;color:var(--pink);
     font:clamp(7px,1.5vw,14px)/1 consolas,menlo,'DejaVu Sans Mono',monospace;font-size:1.65cqw}
   .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -732,8 +788,8 @@ function draw(fi){
   c1.drawImage(art,0,0,g1.width,g1.height);             // cahaya lembut (diburam lewat CSS)
   c2.drawImage(art,0,0,g2.width,g2.height);
   const inf=CFG.info[fi];
-  $('hud').textContent=CFG.sign+'\n'+'candle '+(inf[0]?'lit':'off')+'   flame '+inf[1].toFixed(2)+
-    '   confetti '+inf[2]+'\nletters '+String(inf[3]).padStart(5,'0');
+  $('hud').textContent=CFG.sign+'\ncandle '+(inf[0]?'lit':'off')+'\nflame '+inf[1].toFixed(2)+
+    '\nconfetti '+inf[2]+'\nletters '+String(inf[3]).padStart(5,'0');
 }
 
 function tick(now){
@@ -872,7 +928,8 @@ def show_iframe(html_str):
 #  HALAMAN
 # ════════════════════════════════════════════════════════════════════════════
 def main():
-    lines = [clean(x, limit=12).upper() for x in CONFIG["lines"] if clean(x, limit=12)][:3] or ["HAPPY"]
+    lines = [re.sub(r"[^A-Z0-9 .,!?'&:\-]", "", str(x).upper()).strip()[:12] for x in CONFIG["lines"]]
+    lines = [x for x in lines if x][:3] or ["HAPPY"]
     fps = int(min(24, max(12, CONFIG["fps"])))
     renderer = get_renderer(tuple(lines), fps)          # mulai merender di latar begitu halaman dibuka
     to = clean(st.query_params.get("untuk"), CONFIG["curtain_to"])
