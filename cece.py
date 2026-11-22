@@ -32,7 +32,7 @@ CONFIG = {
     "page_icon": "🎂",
     "title": "Birthday Cake",                 # judul di atas animasi
     "sign": "@abin.zip · 2026",               # tanda tangan kecil di pojok animasi
-    "lines": ["HAPPY", "BIRTHDAY", "PRITUY"],      # 1–3 baris tulisan (A–Z, angka, . , ! ? ' & - :  maks 12 huruf)
+    "lines": ["HAPPY", "BIRTHDAY", "TEH SINTAA"],      # 1–3 baris tulisan (A–Z, angka, . , ! ? ' & - :  maks 12 huruf)
     "curtain_title": "PERTUNJUKAN SPESIAL",   # tulisan emas di tirai
     "curtain_to": "Kamu",                     # "Untuk: ..." di tirai (kosongkan "" untuk menyembunyikan;
                                               #   bisa ditimpa lewat link ?untuk=Nama)
